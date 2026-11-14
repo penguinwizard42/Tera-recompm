@@ -84,6 +84,73 @@ static uint64_t sleep_pc;
 static uint32_t sleep_ms;
 static int sleep_done;
 
+// TERA_DBG_WATCH=<point>:<reg>:<offset> (debugging, Windows): when trace point main+<point> first passes, the 8 bytes
+// at x<reg> + <offset> are watched: their page is made inaccessible, and each access to the 8 bytes logs the lifted
+// function that made it (once per host instruction), then the page is opened for one single-stepped instruction.
+#ifdef _WIN32
+#include <windows.h>
+uint64_t rt_lifted_function(uintptr_t rip);
+static uint64_t watch_point, watch_addr;
+static unsigned watch_reg;
+static uintptr_t watch_page;
+static _Thread_local int watch_step;
+static uintptr_t watch_seen[512];
+static volatile LONG watch_n;
+
+static LONG CALLBACK watch_veh(EXCEPTION_POINTERS *ep) {
+    EXCEPTION_RECORD *er = ep->ExceptionRecord;
+    DWORD old;
+    if (er->ExceptionCode == EXCEPTION_SINGLE_STEP && watch_step) {
+        watch_step = 0;
+        VirtualProtect((void *)watch_page, 0x1000, PAGE_NOACCESS, &old);
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (er->ExceptionCode != EXCEPTION_ACCESS_VIOLATION || er->NumberParameters < 2 || !watch_page)
+        return EXCEPTION_CONTINUE_SEARCH;
+    uintptr_t a = (uintptr_t)er->ExceptionInformation[1];
+    if ((a & ~(uintptr_t)0xfff) != watch_page) return EXCEPTION_CONTINUE_SEARCH;
+    VirtualProtect((void *)watch_page, 0x1000, PAGE_READWRITE, &old);
+    if (a + 8 > watch_addr && a < watch_addr + 8) {
+        uintptr_t rip = (uintptr_t)ep->ContextRecord->Rip;
+        int known = 0;
+        LONG n = watch_n;
+        for (LONG i = 0; i < n && i < 512; i++) known |= watch_seen[i] == rip;
+        if (!known && n < 512) {
+            watch_seen[InterlockedIncrement(&watch_n) - 1] = rip;
+            uint64_t f = rt_lifted_function(rip);
+            char d[128] = "host code";
+            if (f) ldr_describe(f, d, sizeof d);
+            rt_log("watch: %s of %#llx (+%lld) by %s, exe+%#llx", er->ExceptionInformation[0] == 1 ? "write" : "read",
+                   (unsigned long long)watch_addr, (long long)(a - watch_addr), d,
+                   (unsigned long long)(rip - plat_exe_base()));
+        }
+    }
+    ep->ContextRecord->EFlags |= 0x100;
+    watch_step = 1;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void watch_arm(Cpu *c, uint64_t pc) {
+    static int parsed;
+    if (!parsed) {
+        parsed = 1;
+        const char *v = cfg_get("TERA_DBG_WATCH");
+        unsigned long long p = 0, off = 0;
+        if (v && sscanf(v, "%llx:%u:%llx", &p, &watch_reg, &off) == 3 && watch_reg < 31)
+            watch_point = MOD_MAIN_BASE + p, watch_addr = off;
+    }
+    if (!watch_point || pc != watch_point || watch_page) return;
+    watch_addr += c->x[watch_reg];
+    watch_page = (uintptr_t)watch_addr & ~(uintptr_t)0xfff;
+    AddVectoredExceptionHandler(1, watch_veh);
+    DWORD old;
+    VirtualProtect((void *)watch_page, 0x1000, PAGE_NOACCESS, &old);
+    rt_log("watch: armed on %#llx", (unsigned long long)watch_addr);
+}
+#else
+static void watch_arm(Cpu *c, uint64_t pc) { (void)c, (void)pc; }
+#endif
+
 void rt_trace_point(Cpu *c, uint64_t pc) {
     plat_mutex_lock(&lock);
     if (limit < 0) {
@@ -110,6 +177,7 @@ void rt_trace_point(Cpu *c, uint64_t pc) {
         }
     }
     plat_mutex_unlock(&lock);
+    watch_arm(c, pc);
     if (do_sleep) {
         rt_log("trace: sleeping %u ms at %#llx (TERA_TRACE_SLEEP), core given up", sleep_ms, (unsigned long long)pc);
         int away = kern_core_away();
