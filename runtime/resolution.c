@@ -373,7 +373,19 @@ void res_sv_pool_crash(void) {
                 "start\n", SV.w, SV.h, path, next);
 }
 
-static uint64_t sv_res_extra_bytes(void) { return ((sv_rt_mem() - SV_RT_MEM) + 0x1fffff) & ~0x1fffffull; }
+// How much the application pool grows: the render target pool's growth and, above 1920x1080, the pixel share of it
+// once more. The render target pool is not the only memory that grows with the size. At 2560x1440 with the game's
+// shadow map, grown by the render target pool's 126 MiB alone, a Violet save in the DLC areas failed hundreds of times
+// to map more memory after a battle (MapPhysicalMemory answering R_LIMIT_REACHED) and stopped on svcBreak with a black
+// screen; with 254 MiB it played on (measurements in issue #13 and pull request #17). The game maps all the pool holds
+// at start, so the log cannot tell how much it needs later: the second share is a measured margin, not a computed one.
+// sv_rt_mem, the budget the game spawns Pokémon from, stays as it is. In 2 MiB steps.
+static uint64_t sv_res_extra_bytes(void) {
+    uint64_t extra = sv_rt_mem() - SV_RT_MEM;   // sv_rt_mem decides the size first
+    uint64_t px = (uint64_t)SV.w * SV.h, base = (uint64_t)BASE_W * BASE_H;
+    if (px > base) extra += (uint64_t)((double)SV_RT_MEM * 0.60 * (double)(px - base) / (double)base);
+    return (extra + 0x1fffff) & ~0x1fffffull;
+}
 
 static void sv_res_init(void) {
     sv_decide();
