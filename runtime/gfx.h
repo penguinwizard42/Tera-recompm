@@ -51,6 +51,12 @@ const GfxShader *gfx_shader_get_async(int stage, const uint8_t *control, const u
 const GfxShader *gfx_shader_await(int stage, const uint8_t *control, const uint8_t *code, uint64_t code_size,
                                   const GfxShaderAnswers *a);
 uint64_t gfx_shader_async_done(void);                      // translations finished by the background worker
+// Translate a shader no draw has asked for yet, in the background behind every draw's translation: the program's
+// shaders as the game creates it (nvn_api_obj.c prog_set_shaders), with the default answers, so its first draw finds
+// them done. Returns at once; nothing is recorded as met in play.
+void gfx_shader_ahead(int stage, const uint8_t *control, const uint8_t *code, uint64_t code_size,
+                      const GfxShaderAnswers *a);
+uint64_t gfx_shader_ahead_done(void);                      // ahead translations finished
 void gfx_shader_counts(uint64_t *keys, uint64_t *translated);   // distinct keys in memory, translations done (TOTK_TRACE=perf)
 // Translator answers for this device (vk_caps.c): shaderFloat64, storage offset rounding, subgroup size per vs/fs/cs.
 void gfx_shader_set_host(int float64, uint32_t sbuf_align, const uint32_t subgroup[3], uint32_t gather_bits, int zero_locals);

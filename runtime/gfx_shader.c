@@ -1463,6 +1463,7 @@ typedef struct XJob {
     Req r;                                                 // r.c1 points into code
     uint8_t *control, *code;
     GfxShaderAnswers a;
+    uint64_t ahead_key;                                    // gfx_shader_ahead's job: r is set by the worker
 } XJob;
 
 typedef struct XWait {
@@ -1477,9 +1478,17 @@ static struct {
     XJob *head, *tail;
     XWait *waits[256];
     int started;                                           // 1 running, -1 no thread could be created
+    int started_n;                                         // workers running
+    // Ahead jobs (gfx_shader_ahead): run only when no draw waits on a translation, and on all but one worker, so a
+    // draw's job always finds a worker soon. Not in waits: a draw never waits on them; the same shader asked for by a
+    // draw is queued as an ordinary job, and the code hash's flight (flight_enter) runs the translator once.
+    XJob *ahead_head, *ahead_tail;
+    uint64_t ahead_queued[512];                            // the queued ahead jobs' code address and length (a
+                                                           // direct-mapped filter: a collision only queues one twice)
+    int ahead_running, ahead_logged;
 } X = {PLAT_MUTEX_INIT, PLAT_COND_INIT, PLAT_COND_INIT};
 
-static volatile int64_t n_async;
+static volatile int64_t n_async, n_ahead;
 
 // Caller holds X.lock.
 static XWait **wait_slot(const uint8_t key[32]) {
@@ -1488,11 +1497,45 @@ static XWait **wait_slot(const uint8_t key[32]) {
     return w;
 }
 
+static void xlate_worker(void *arg);
+
+// Caller holds X.lock.
+static void workers_start(void) {
+    if (X.started) return;
+    int n = 0;
+    for (int i = 0; i < svc_runtime_limit(); i++) {
+        if (plat_thread_spawn(xlate_worker, NULL, "xlate", 0)) n++;
+    }
+    X.started = n ? 1 : -1, X.started_n = n;
+    if (n) rt_log("gfx_shader: graphics shaders are translated by %d background workers (TOTK_XLATE_PROCS)", n);
+    else rt_log("gfx_shader: cannot start the translation workers; translating synchronously");
+}
+
 static void xlate_worker(void *arg) {
     (void)arg;
     for (;;) {
         plat_mutex_lock(&X.lock);
-        while (!X.head) plat_cond_wait(&X.work, &X.lock);
+        // an ahead job only on a worker that leaves another free for draws
+        while (!X.head && !(X.ahead_head && X.ahead_running < X.started_n - 1)) plat_cond_wait(&X.work, &X.lock);
+        if (!X.head) {
+            XJob *j = X.ahead_head;
+            if (!(X.ahead_head = j->next)) X.ahead_tail = NULL;
+            if (X.ahead_queued[j->ahead_key & 511] == j->ahead_key) X.ahead_queued[j->ahead_key & 511] = 0;
+            X.ahead_running++;
+            plat_mutex_unlock(&X.lock);
+            uint32_t len;
+            memcpy(&len, j->control + 0x704, 4);
+            const GfxShader *s = NULL;
+            if (req_init(&j->r, j->stage, j->control, j->code, len, NULL, &j->a))
+                s = mem_find(j->r.key) ? NULL : translate(&j->r, j->stage, j->control, j->code, &j->a);
+            plat_mutex_lock(&X.lock);
+            X.ahead_running--;
+            plat_mutex_unlock(&X.lock);
+            plat_cond_signal(&X.work);                     // a worker held back for draws may take the next one
+            if (s) plat_inc64(&n_ahead);
+            free(j->control), free(j->code), free(j);
+            continue;
+        }
         XJob *j = X.head;
         if (!(X.head = j->next)) X.tail = NULL;
         plat_mutex_unlock(&X.lock);
@@ -1535,15 +1578,7 @@ static const GfxShader *get_async_one(Req r, int stage, const uint8_t *control, 
     XWait *e = calloc(1, sizeof *e);
     uint8_t *ctl = malloc(CONTROL_SIZE), *cd = malloc(r.length);
     plat_mutex_lock(&X.lock);
-    if (!X.started) {
-        int n = 0;
-        for (int i = 0; i < svc_runtime_limit(); i++) {
-            if (plat_thread_spawn(xlate_worker, NULL, "xlate", 0)) n++;
-        }
-        X.started = n ? 1 : -1;
-        if (n) rt_log("gfx_shader: graphics shaders are translated by %d background workers (TOTK_XLATE_PROCS)", n);
-        else rt_log("gfx_shader: cannot start the translation workers; translating synchronously");
-    }
+    workers_start();
     XWait **slot = wait_slot(r.key);
     int raced = *slot != NULL;                             // another thread queued it between the checks
     int queued = !raced && X.started == 1 && j && e && ctl && cd;
@@ -1564,6 +1599,40 @@ static const GfxShader *get_async_one(Req r, int stage, const uint8_t *control, 
     if (raced) return *pending = 1, NULL;
     return translate(&r, stage, control, code, a);         // no worker or out of memory
 }
+
+// Queue a translation a draw has not asked for yet (gfx.h). The caller's thread only copies the shader: hashing it and
+// the cache lookups, on disk too, run on the worker (translate_one looks before it translates).
+void gfx_shader_ahead(int stage, const uint8_t *control, const uint8_t *code, uint64_t code_size,
+                      const GfxShaderAnswers *a) {
+    uint32_t len;
+    memcpy(&len, control + 0x704, 4);
+    if (!code || !len || len > code_size) return;
+    uint64_t k = (((uint64_t)(uintptr_t)code * 0x9E3779B97F4A7C15ull) ^ len ^ (uint64_t)stage << 40) | 1;
+    plat_mutex_lock(&X.lock);
+    workers_start();
+    int queue = X.started == 1 && X.ahead_queued[k & 511] != k;
+    XJob *j = queue ? calloc(1, sizeof *j) : NULL;
+    uint8_t *ctl = j ? malloc(CONTROL_SIZE) : NULL, *cd = ctl ? malloc(len) : NULL;
+    if (cd) {
+        memcpy(ctl, control, CONTROL_SIZE), memcpy(cd, code, len);
+        *j = (XJob){.stage = stage, .control = ctl, .code = cd, .a = *a, .ahead_key = k};
+        X.ahead_queued[k & 511] = k;
+        if (X.ahead_tail) X.ahead_tail->next = j;
+        else X.ahead_head = j;
+        X.ahead_tail = j;
+        if (!X.ahead_logged) {
+            X.ahead_logged = 1;
+            rt_log("gfx_shader: program shaders are translated ahead of their first draw, behind the draws' own "
+                   "(TOTK_SHADER_AHEAD)");
+        }
+        plat_cond_signal(&X.work);
+    } else {
+        free(j), free(ctl);
+    }
+    plat_mutex_unlock(&X.lock);
+}
+
+uint64_t gfx_shader_ahead_done(void) { return (uint64_t)n_ahead; }
 
 const GfxShader *gfx_shader_await(int stage, const uint8_t *control, const uint8_t *code, uint64_t code_size,
                                   const GfxShaderAnswers *a) {

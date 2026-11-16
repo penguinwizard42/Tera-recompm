@@ -458,6 +458,30 @@ NVN_API(nvnProgramFinalize) {
     prog_release(o);
     o->magic = 0;
 }
+// Scarlet and Violet create a program well before its first draw: a battle's move effects at the battle's start, an
+// area's at its load. Their vertex and fragment shaders are queued for translation then, with the default answers
+// (every texture a 2D texture, float inputs and outputs: the bind state of most draws, as tools/prepare_shaders.py
+// prepares TotK's), behind every draw's own translation (gfx_shader_ahead). Without it a move's first use translated
+// its effect's shaders while the effect played, and the effect's draws were skipped until then: the move looked
+// invisible the first time. The first draw still translates a variant with other answers. TOTK_SHADER_AHEAD=0 turns
+// it off; TotK prepares its shaders at setup instead.
+static void prog_ahead(const prog_t *o) {
+    static int on = -1;
+    if (on < 0) on = rt_knob("SHADER_AHEAD", RT_SV ? "1" : "0");
+    if (!RT_KNOB_ON(on)) return;
+    for (uint32_t i = 0; i < o->nstage && i < 6; i++) {
+        const uint8_t *ctl = o->sd[i].control;
+        if (!ctl || !o->sd[i].data) continue;
+        uint32_t st, len;
+        memcpy(&st, ctl + 0x714, 4), memcpy(&len, ctl + 0x704, 4);
+        if (st != 0 && st != 1) continue;                  // NVN vertex and fragment stages; compute stays at its dispatch
+        GfxShaderAnswers a;
+        memset(&a, 0, sizeof a);
+        memset(a.tex_type, GFX_TEX_2D, sizeof a.tex_type);
+        gfx_shader_ahead(st ? GFX_STAGE_FS : GFX_STAGE_VS, ctl, (const uint8_t *)(uintptr_t)o->sd[i].data, len, &a);
+    }
+}
+
 static int prog_set_shaders(prog_t *o, int n, const NVNshaderData *sd) {
     if (n < 0 || n > 6 || (n && !sd)) {
         rt_log("nvn: ProgramSetShaders with %d stages at %p", n, (const void *)sd);
@@ -468,6 +492,7 @@ static int prog_set_shaders(prog_t *o, int n, const NVNshaderData *sd) {
     if (n) memcpy(o->sd, sd, (size_t)n * sizeof *sd);
     o->serial = nvn_new_serial();
     NVN_LOG("ProgramSetShaders %p n=%d data0=%#llx", (void *)o, n, n ? (unsigned long long)sd[0].data : 0ull);
+    prog_ahead(o);
     return 1;
 }
 // NVNboolean nvnProgramSetShaders(NVNprogram *p, int n, const NVNshaderData *sd)
