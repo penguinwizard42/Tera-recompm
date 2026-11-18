@@ -678,6 +678,12 @@ static void tab_screen(float scale) {
     const char *dynres_names[] = {menu_text(UI_MENU_DYNRES_GAME), menu_text(UI_MENU_DYNRES_MAX)};
     opt_choice_list("TOTK_DYNAMIC_RES", UI_MENU_DYNRES, dynres, dynres_names, 2, UI_MENU_DYNRES_DESC);
     row_shadow_res();
+    if (rt_game_version >= 400) {   // sv_census.c population: Scarlet and Violet's wild Pokemon at once
+        static const char *const pop[] = {"switch", "switch2", "enhanced", "extreme"};
+        const char *pop_names[] = {menu_text(UI_MENU_POPULATION_GAME), "Switch 2 (40)", menu_text(UI_MENU_POPULATION_80),
+                                   menu_text(UI_MENU_POPULATION_120)};
+        opt_choice_list("TOTK_POPULATION", UI_MENU_POPULATION, pop, pop_names, 4, UI_MENU_POPULATION_DESC);
+    }
     static const UiTextId up[] = {UI_MENU_UPSCALER_FSR, UI_MENU_UPSCALER_BILINEAR};
     opt_choice("TOTK_UPSCALER", UI_MENU_UPSCALER, up, 2, UI_MENU_UPSCALER_DESC);
     opt_slider("TOTK_SHARPNESS", UI_MENU_SHARPNESS, 0, 100, UI_MENU_SHARPNESS_DESC, 5, "%.0f %%");

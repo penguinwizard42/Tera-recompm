@@ -1,17 +1,27 @@
-// Scarlet and Violet shader census: every shader program of the player's own data.trpfs, extracted once at install
-// time so that totk.exe --prepare-shaders can translate and build all of them before play (no stutter and no
-// invisible effects the first time a scene, a move or a menu draws a shader).
+// Scarlet and Violet's Oodle decoder through the host: the shader census, and the wild Pokemon population.
+//
+// The shader census: every shader program of the player's own data.trpfs, extracted once at install time so that
+// totk.exe --prepare-shaders can translate and build all of them before play (no stutter and no invisible effects the
+// first time a scene, a move or a menu draws a shader).
+//
+// The population (setting population): how many wild Pokemon exist around the player at once. The game keeps it in
+// world/data/system/object_generation_range, a small Oodle-packed FlatBuffers file (157 bytes packed, 312 unpacked,
+// told apart by an FNV-1a 64 of its packed bytes); right after the game unpacks it, the count (15 in 4.0.0) and the
+// distances at which wild Pokemon appear and go are written into the unpacked bytes. switch is the game's own; switch2
+// (40) has the values of the fan mod Pokemon Compass for those fields, enhanced (80) and extreme (120) raise only the
+// count. Offsets and values from KarPur's runtime/data_patch.c, which reports 120 together with 4096 shadows playing
+// fine on its maintainer's PC; nothing is reserved for them, the game's own memory budget holds them.
 //
 // Adapted from KarPur's runtime/shader_census.c and runtime/data_watch.c (https://github.com/Grunttanamo/KarPur @
 // c2b2c0d738f2c769c24e2ceddb60592aba6e7778, MIT, Copyright (c) 2026 KarPur contributors): the Oodle hook, the
-// archive walk, the BNSH extraction and the seed records. Left out: KarPur's search for programs recorded in play, its
+// archive walk, the BNSH extraction, the seed records and the population fields. Left out: KarPur's search for programs recorded in play, its
 // container report, the team icons and the growth curves.
 //
 // How it works. Scarlet and Violet keep their shaders in BNSH containers inside Oodle-packed files of arc/data.trpfs
 // (standalone .bnsh/.trsha files, SARC UI archives and VFXB effect files), and only the game's own decoder unpacks
-// Oodle. The patch set sv_census (recomp/patches-v400.txt) sends the game's two calls of OodleLZ_Decompress
-// (main+0xcc8750) to host_oodle below; with TOTK_SHADER_CENSUS=1 (which turns that set on) the first call runs the
-// census on that thread: it walks every pack of data.trpfs, unpacks each file with the game's decoder (the call's own
+// Oodle. The patch set sv_oodle (recomp/patches-v400.txt) sends the game's two calls of OodleLZ_Decompress
+// (main+0xcc8750) to host_oodle below; with TOTK_SHADER_CENSUS=1 (sv_oodle_init turns that set on) the first call runs
+// the census on that thread: it walks every pack of data.trpfs, unpacks each file with the game's decoder (the call's own
 // extra arguments, the stack ones stay where they are: rt_call leaves sp alone) into a buffer below RT_ADDRESS_LIMIT,
 // where guest addresses are host addresses, and finds every BNSH in the result. A program's shader info holds u64
 // control offset, u64 code offset and u32 code length from the BNSH's start, and the control section's length field
@@ -314,7 +324,53 @@ static void census_run(Cpu *c, const uint64_t a[8]) {
     exit(ok && n_out ? 0 : 2);
 }
 
-// Every call of the game's Oodle decoder while the set is on. Without the census it is the guest decoder as before.
+// ---- population
+#define GEN_PACKED 157                       // object_generation_range: packed and unpacked size, FNV-1a 64 of the
+#define GEN_UNPACKED 312                     // packed bytes
+#define GEN_PRINT 0x8a61deb07c34472bull
+static const struct { uint32_t at; char type; int32_t value; } gen_fields[] = {
+    {0xd4, 'f', 20},   // wild Pokemon: nearest distance they appear at
+    {0xd8, 'f', 60},   // farthest they appear at
+    {0xdc, 'f', 80},   // nearest they go at
+    {0xe0, 'f', 80},   // farthest they go at
+    {0xe4, 'i', 0},    // how many at once: the level's count
+    {0x3c, 'i', 5},    // values[8]: how many at once
+};
+static int wild_count = -1;   // 0: the game's own
+
+static int population(void) {
+    if (wild_count < 0) {
+        const char *v = cfg_value("TOTK_POPULATION");
+        wild_count = !RT_SV ? 0 : !strcmp(v, "switch2") ? 40 : !strcmp(v, "enhanced") ? 80 : !strcmp(v, "extreme") ? 120 : 0;
+    }
+    return wild_count;
+}
+
+static uint64_t fnv1a64_bytes(const uint8_t *p, uint64_t n) {
+    uint64_t h = 0xCBF29CE484222645ull;
+    for (uint64_t i = 0; i < n; i++) h = (h ^ p[i]) * 0x100000001B3ull;
+    return h;
+}
+
+static void population_patch(const uint64_t a[8], uint64_t r) {
+    if (r != GEN_UNPACKED || a[1] < GEN_PACKED || a[0] + GEN_PACKED > RT_ADDRESS_LIMIT || a[2] + r > RT_ADDRESS_LIMIT ||
+        fnv1a64_bytes((const uint8_t *)(uintptr_t)a[0], GEN_PACKED) != GEN_PRINT)
+        return;
+    uint8_t *out = (uint8_t *)(uintptr_t)a[2];
+    for (size_t i = 0; i < sizeof gen_fields / sizeof *gen_fields; i++) {
+        int32_t v = gen_fields[i].value ? gen_fields[i].value : wild_count;
+        if (gen_fields[i].type == 'f') {
+            float f = (float)v;
+            memcpy(out + gen_fields[i].at, &f, 4);
+        } else {
+            memcpy(out + gen_fields[i].at, &v, 4);
+        }
+    }
+    static int logged;
+    if (!logged++) rt_log("population: object_generation_range set to up to %d wild Pokemon at once", wild_count);
+}
+
+// Every call of the game's Oodle decoder while the set is on: the guest decoder as before, then the population.
 static void host_oodle(Cpu *c) {
     uint64_t a[8];
     memcpy(a, c->x, sizeof a);
@@ -322,9 +378,21 @@ static void host_oodle(Cpu *c) {
         static int ran;
         if (!__atomic_exchange_n(&ran, 1, __ATOMIC_ACQ_REL)) census_run(c, a);   // does not return
     }
-    rt_call(c, GUEST_OODLE, 8, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);   // its result stays in x0
+    uint64_t r = rt_call(c, GUEST_OODLE, 8, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);   // its result stays in x0
+    if (wild_count > 0) population_patch(a, r);
 }
 
 __attribute__((constructor)) static void sv_census_register(void) { rt_register_host(HOST_OODLE, host_oodle); }
 
+// After rt_patches_init (boot.c): the hook on only when something wants the decodes.
+void sv_oodle_init(void) {
+    int set = rt_patch_set("sv_oodle");
+    if (set < 0 || !RT_SV) return;
+    int wild = population();
+    if (wild) rt_log("population: up to %d wild Pokemon at once (the game's own: 15)", wild);
+    if (census_wanted() || wild) rt_patch_switch(set, 1);
+}
+
+#else
+void sv_oodle_init(void) {}
 #endif
