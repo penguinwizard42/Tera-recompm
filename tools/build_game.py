@@ -186,8 +186,8 @@ LLVM_LINK_LIBS = ['-lpsapi', '-lbcrypt', '-luser32', '-lgdi32', '-ldwmapi', '-li
 DEFAULT_DEPS = ROOT / 'toolchain' / 'deps-mingw'
 # Runtime sources compiled per install, not in the library: romfs.c includes romfs_config.h, patches.c and ov_zstd.c
 # the patches.h of the player's game version (its patch page is the page after that version's main; ov_zstd.c's host
-# functions sit on it). mouse_direct.c also registers host callbacks relative to that version's patch page.
-INSTALL_SIDE = {'romfs.c', 'patches.c', 'ov_zstd.c', 'mouse_direct.c'}
+# functions sit on it). mouse_direct.c and sv_census.c also register host functions relative to that version's patch page.
+INSTALL_SIDE = {'romfs.c', 'patches.c', 'ov_zstd.c', 'mouse_direct.c', 'sv_census.c'}
 LIB_NAME = 'libtotkrt.a'
 # The application ID of each game --title names (runtime/title.h reads it from modules.c)
 TITLE_IDS = {'scarlet': 0x0100A3D008C5C000, 'violet': 0x01008F6008C5E000}

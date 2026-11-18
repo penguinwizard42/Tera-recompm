@@ -28,6 +28,7 @@ bundles it; it stays out of the repository), else from refs/ through git with th
 (tools/shader_list.py); nothing of it is copied into the repository. Needs Python 3.14 (compression.zstd), so run it in .venv-py314 or the embeddable 3.14:
 
     .venv-py314\\Scripts\\python tools\\prepare_shaders.py build\\v121 [--version v121] [--list <tsv>] [--no-run]
+    .venv-py314\\Scripts\\python tools\\prepare_shaders.py build\\v400 --census     # Scarlet / Violet
                                                      [--romfs DIR --exefs DIR]   # instead of build\\extracted\\<version>
 """
 import argparse
@@ -149,9 +150,15 @@ def main():
     ap.add_argument('--romfs', type=Path, help='RomFS directory (default build/extracted/<version>/romfs)')
     ap.add_argument('--exefs', type=Path, help='ExeFS directory (default build/extracted/<version>/exefs)')
     ap.add_argument('--list', help='a shader_list.tsv instead of tools/data/shader_list.tsv or refs/MacNativeGames')
+    ap.add_argument('--census', action='store_true',
+                    help='Scarlet/Violet: the seed from the game\'s own data.trpfs (totk.exe with TOTK_SHADER_CENSUS=1) '
+                         'instead of the list and the RomFS walk')
     ap.add_argument('--no-run', action='store_true', help='write the seed files only')
     a = ap.parse_args()
     t0 = time.monotonic()
+    if a.census:
+        rc = census(a.build.resolve())
+        return rc if rc or a.no_run else run(a.build.resolve(), t0)
     variants, prio = parse_list(read_list(a.list))
     extracted = ROOT / 'build' / 'extracted' / a.version
     listed = len(variants)
@@ -205,6 +212,23 @@ def main():
           f'seed written in {time.monotonic() - t0:.1f} s', flush=True)
     if a.no_run:
         return 0
+    return run(out, t0)
+
+
+def census(out):
+    """Scarlet and Violet keep their shaders inside Oodle-packed files of arc/data.trpfs, which only the game's own
+    decoder unpacks, so the game writes the seed itself: totk.exe with TOTK_SHADER_CENSUS=1 unpacks every file at its
+    first decode, writes seed-programs.bin and seed-answers.bin beside itself and exits (runtime/sv_census.c)."""
+    exe = out / ('totk.exe' if os.name == 'nt' else 'totk')
+    t0 = time.monotonic()
+    r = subprocess.run([str(exe)], cwd=str(out), env=dict(os.environ, TOTK_SHADER_CENSUS='1'))
+    ok = not r.returncode and (out / 'seed-programs.bin').is_file() and (out / 'seed-answers.bin').is_file()
+    print(f'shader census: rc={r.returncode}, {"seed written" if ok else "no seed"} in {time.monotonic() - t0:.1f} s',
+          flush=True)
+    return 0 if ok else (r.returncode or 1)
+
+
+def run(out, t0):
     exe = out / ('totk.exe' if os.name == 'nt' else 'totk')
     r = subprocess.run([str(exe), '--prepare-shaders'], cwd=str(out))
     for _ in range(RETRIES):

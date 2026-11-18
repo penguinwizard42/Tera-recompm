@@ -1158,9 +1158,9 @@ ASPECT_SIZES = ('2560x1080', '3440x1440', '3840x1600', '5120x2160', '3840x1080',
 
 
 # TotK's prepare step also wrote RomFS overlays (UI layouts, button prompts) and translated the shaders of the
-# MacNativeGames shader list ahead of play. Neither exists for Scarlet yet: its prepare step only installs the shader
-# translator, and the game translates each shader the first time it meets it, then compiles the recorded ones at the
-# start of every later run (runtime/gfx_shader.c prewarm).
+# MacNativeGames shader list ahead of play. Scarlet and Violet have no overlays; their shaders come from the player's
+# own data.trpfs instead (tools/prepare_shaders.py --census, runtime/sv_census.c), translated and built for the driver
+# before play. Optional: when that fails the game translates each shader the first time it meets it, as before.
 TOTK_ASSETS = False
 
 
@@ -1174,15 +1174,16 @@ class Prepare(Step):
                                             'pack_shader_cache.py', 'ultrawide_layout.py', 'button_icons.py')]
         # not the compile key: a rebuild for the mods' code cheats keeps the prepared shaders
         if not TOTK_ASSETS:
-            return fingerprint('prepare-sv-1', runtime_key(ctx), layout.xlate, xlate_id)
+            return fingerprint('prepare-sv-2', runtime_key(ctx), layout.xlate, xlate_id,
+                               layout.tools / 'prepare_shaders.py', layout.tools / 'pack_shader_cache.py')
         return fingerprint('prepare-2', ctx.keys['extract'], runtime_key(ctx), layout.xlate, xlate_id,
                            shader_list_text(layout), *tools)
 
     def current(self, ctx, record):
         dest = ctx.dest
         xlate = dest / ctx.layout.xlate.name
-        assets = not TOTK_ASSETS or ((dest / 'shader-prepared.bin').is_file()
-                                     and (dest / 'romfs-patches' / 'manifest.tsv').is_file())
+        assets = (dest / 'shader-prepared.bin').is_file() and (
+            not TOTK_ASSETS or (dest / 'romfs-patches' / 'manifest.tsv').is_file())
         return assets and xlate.is_file() and file_sha256(xlate) == record.get('xlate_sha256')
 
     def run(self, ctx):
@@ -1206,7 +1207,35 @@ class Prepare(Step):
                 raise InstallError('prepare.xlate_in_use', path=str(xlate.with_suffix('.id'))) from None
         else:
             remove(xlate.with_suffix('.id'))
+        skipped = [0]
+
+        def parse(line):
+            m = TRANSLATED.search(line)
+            if m:
+                rep.progress('prepare', 'translate', int(m.group(1)), int(m.group(2)), 'shaders')
+            elif SKIPPED.search(line):
+                skipped[0] = int(SKIPPED.search(line).group(1))
+            elif 'listed variants' in line or 'shader census: rc=' in line:
+                rep.progress('prepare', 'translate', force=True)
+            elif 'gfx_shader: prepare:' in line and 'translated' in line and 'programs' in line:
+                rep.progress('prepare', 'libraries', force=True)
+
         if not TOTK_ASSETS:
+            # Every shader of the game ahead of play: the census writes the seed from data.trpfs, totk.exe translates
+            # it and builds it into the driver's cache. Optional, so a failure is a warning and the install goes on.
+            rep.progress('prepare', 'seed', force=True)
+            code, log = run_tool(ctx, 'prepare', layout.tools / 'prepare_shaders.py', [dest, '--census'], parse)
+            for name in ('seed-programs.bin', 'seed-answers.bin'):   # the player's own game data; prepared now
+                remove(dest / name)
+            if code or not (dest / 'shader-prepared.bin').is_file():
+                rep.warning('warn.shaders_census_failed', code=code, log=str(log))
+                return {'xlate_sha256': file_sha256(xlate)}
+            if skipped[0]:
+                rep.warning('warn.shaders_skipped', count=skipped[0], log=str(log))
+            rep.progress('prepare', 'pack', force=True)
+            code, log = run_tool(ctx, 'prepare', layout.tools / 'pack_shader_cache.py', [dest / 'shader-cache'])
+            if code:
+                raise InstallError('prepare.pack_failed', code=code, log=str(log))
             return {'xlate_sha256': file_sha256(xlate)}
 
         rep.progress('prepare', 'romfs_patches', force=True)
@@ -1249,19 +1278,6 @@ class Prepare(Step):
         if not shader_list:
             shader_list = ctx.temp / 'shader_list.tsv'
             shader_list.write_text(shader_list_text(layout), encoding='utf-8', newline='\n')
-
-        skipped = [0]
-
-        def parse(line):
-            m = TRANSLATED.search(line)
-            if m:
-                rep.progress('prepare', 'translate', int(m.group(1)), int(m.group(2)), 'shaders')
-            elif SKIPPED.search(line):
-                skipped[0] = int(SKIPPED.search(line).group(1))
-            elif 'listed variants' in line:
-                rep.progress('prepare', 'translate', force=True)
-            elif 'gfx_shader: prepare:' in line and 'translated' in line and 'programs' in line:
-                rep.progress('prepare', 'libraries', force=True)
 
         rep.progress('prepare', 'seed', force=True)
         code, log = run_tool(ctx, 'prepare', layout.tools / 'prepare_shaders.py',

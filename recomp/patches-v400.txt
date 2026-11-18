@@ -182,6 +182,14 @@ site svshadow main 16dc200 b983d66d @page:x13 b940b1ad
 # sets to 268 MiB when the data says 320 MiB): without more of it, a larger size runs out when the map opens.
 site svres main 146e770 52a21809 @page:x9 b940a129
 
+# Shader census (runtime/sv_census.c, after KarPur's data_watch set): the game's two calls of its Oodle decoder,
+# OodleLZ_Decompress (main+0xcc8750, the function whose error strings name it), go to a host function on the patch
+# page (+0xf60), which runs the decoder as before or, the first time, extracts every shader program of data.trpfs.
+# Only on while tools/prepare_shaders.py --census runs the game with TOTK_SHADER_CENSUS=1.
+set sv_census TOTK_SHADER_CENSUS 0
+site sv_census main cc8510 94000090 94ec2e94   # bl OodleLZ_Decompress -> page+0xf60
+site sv_census main 27ad704 97946c13 94809a17  # bl OodleLZ_Decompress -> page+0xf60
+
 # Debugging trace points (runtime/tracepoint.c). Remove before a release build.
 # Boot: nnMain's init chain (main+0x11bcc84) calls the object's virtual main+0x14fd2d8, which locks a field of the
 # null result of main+0x14ff4dc: that object's +0x58 is empty. main+0x11e1a60 (early in the same chain) was checked
