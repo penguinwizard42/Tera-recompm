@@ -298,6 +298,7 @@ void rt_patches_init(void);                                // after ldr_load: sw
 int rt_patch_set(const char *name);                        // index of a set of generated patches.h, -1 if absent
 int rt_patch_enabled(int set);                             // the set is on (0 for -1)
 void rt_patch_disable(int set);                            // before the guest starts: a set needs another that is off
+void sv_detail_present(void);                              // sv_detail.c, once per presented frame
 void sv_oodle_init(void);                                  // sv_census.c: the Oodle hook on when wanted
 void rt_patch_switch(int set, int on);                     // at run time (live settings): each site takes the new code
                                                            // the next time it runs

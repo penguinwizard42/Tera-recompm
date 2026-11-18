@@ -683,6 +683,16 @@ static void tab_screen(float scale) {
         const char *pop_names[] = {menu_text(UI_MENU_POPULATION_GAME), "Switch 2 (40)", menu_text(UI_MENU_POPULATION_80),
                                    menu_text(UI_MENU_POPULATION_120)};
         opt_choice_list("TOTK_POPULATION", UI_MENU_POPULATION, pop, pop_names, 4, UI_MENU_POPULATION_DESC);
+        // sv_detail.c: full-detail model distances and town people
+        static const char *const pd[] = {"1", "2", "4", "6", "8", "10"};
+        const char *pd_names[] = {menu_text(UI_MENU_DETAIL_GAME), "16 m", "32 m", "48 m", "64 m", "80 m"};
+        opt_choice_list("TOTK_PEOPLE_DETAIL", UI_MENU_PEOPLE_DETAIL, pd, pd_names, 6, UI_MENU_PEOPLE_DETAIL_DESC);
+        static const char *const kd[] = {"1", "2", "4", "6", "8"};
+        const char *kd_names[] = {menu_text(UI_MENU_DETAIL_GAME), "20 m", "40 m", "60 m", "80 m"};
+        opt_choice_list("TOTK_POKEMON_DETAIL", UI_MENU_POKEMON_DETAIL, kd, kd_names, 5, UI_MENU_POKEMON_DETAIL_DESC);
+        static const char *const ps[] = {"12", "24", "36", "48"};
+        const char *ps_names[] = {menu_text(UI_MENU_PEOPLE_SHOWN_GAME), "24", "36", "48"};
+        opt_choice_list("TOTK_PEOPLE_SHOWN", UI_MENU_PEOPLE_SHOWN, ps, ps_names, 4, UI_MENU_PEOPLE_SHOWN_DESC);
     }
     static const UiTextId up[] = {UI_MENU_UPSCALER_FSR, UI_MENU_UPSCALER_BILINEAR};
     opt_choice("TOTK_UPSCALER", UI_MENU_UPSCALER, up, 2, UI_MENU_UPSCALER_DESC);

@@ -770,5 +770,6 @@ NVN_API(nvnQueuePresentTexture) {
     o->ticket[idx] = o->presents;
     o->avail[idx] = cfg_bool("TOTK_FRAME_QUEUE") ? slot : slot + period;
     frame_step_present(slot, o->interval);   // frame_rate.c: the real-time step follows the display times
+    sv_detail_present();                     // sv_detail.c: Scarlet/Violet people and Pokemon detail, town people
     rt_frame_presented(t, o->presents);
 }

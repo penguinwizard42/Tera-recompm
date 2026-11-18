@@ -193,6 +193,12 @@
 # spawn values of the Pokemon Compass mod), enhanced 80, extreme 120. More Pokemon cost some CPU and GPU time. Read at
 # start.
 # population = switch
+# Scarlet and Violet: how far people and Pokemon keep their detailed models, as a multiple of the game's own 8 m for
+# people (1, 2, 4, 6, 8 or 10: up to 80 m) and 10 m for Pokemon (1, 2, 4, 6 or 8: up to 80 m), and how many town people
+# are modeled at once (12, the game's own, 24, 36 or 48). Higher values cost CPU and GPU time. Read at start.
+# people_detail = 1
+# pokemon_detail = 1
+# people_shown = 12
 
 # Shadow map resolution: Pokemon Scarlet's sun shadow map is 1024x1024 whatever the game resolution; 2 to 4 draws it
 # that many times larger on each side, for sharper, less blocky shadows (2 = 2048x2048, the default). 1 = the game's.
