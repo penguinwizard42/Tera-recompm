@@ -54,13 +54,28 @@ the 4.0.0 update, `prod.keys`, the firmware folder and optionally the DLC, and i
    - **Game language**;
    - **Install folder**: a new, empty folder, for example `C:\Games\Tera Recomp`.
 4. Click **Start** and wait. The window shows each step: checking the files, extracting the system fonts, extracting
-   and merging the game with the update, translating the game code to C and compiling it. About 20 minutes on a
-   recent PC. If it stops, it resumes from the last finished step when you click Start again.
+   and merging the game with the update, translating the game code to C and compiling it, then preparing every shader
+   of the game for your graphics card. About 30 minutes on a recent PC. If it stops, it resumes from the last finished step when you click Start again.
 5. When it is done, start the game with the **Pokemon Scarlet** (or **Pokemon Violet**) shortcut on your desktop (or `totk.exe` in the install
    folder).
 
-The first time you meet a new area or effect the game translates its shaders, which can stutter briefly; from the
-second run on they are compiled at start.
+The setup prepares all of the game's shaders (about 36,000, taken from your own game files), so new areas, Pokémon
+and moves show up without the stutter of a first-time shader build. If that step fails, the setup says so and the game
+still runs: it then prepares each shader the first time it meets it.
+
+## Settings
+
+The settings menu (**F1**) has, besides resolution, frame rate, shadows and controls:
+
+- **Wild Pokémon**: how many wild Pokémon are around you at once, from the game's 15 up to 120.
+- **People detail distance** and **Pokémon detail distance**: detailed models up to 80 m away instead of 8 and 10 m.
+- **Town people**: up to 48 people in towns at once instead of 12.
+- **No version exclusives**: the other edition's wild Pokémon appear too.
+- **No trade evolutions**: Pokémon that need a trade evolve on a level or while holding an item instead
+  ([docs/trade-evolutions.md](docs/trade-evolutions.md)).
+- **AMD: character skinning sync** (Advanced tab): for AMD cards whose game crashes in character creation.
+
+All of them are off or at the game's own value by default and take effect at the next start.
 
 ## Status
 
@@ -118,6 +133,8 @@ repository), `tools/make_release.py` (the setup package).
 ## Credits and license
 
 Built on TotK Recomp and the projects it credits ([docs/totk-README.md](docs/totk-README.md),
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). Own code under the MIT License. The license grants nothing for
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). The shader preparation, the population, detail, exclusives and
+trade-evolution settings and the AMD option come from [KarPur](https://github.com/Grunttanamo/KarPur) by Grunttanamo
+(MIT), with its author's permission. Own code under the MIT License. The license grants nothing for
 Nintendo's, The Pokémon Company's or Game Freak's game. Independent, non-commercial fan project, not affiliated with
 or endorsed by them. *Pokémon* is a trademark of Nintendo, Creatures Inc. and GAME FREAK inc.
