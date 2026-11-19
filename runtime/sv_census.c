@@ -1,5 +1,5 @@
-// Scarlet and Violet's Oodle decoder through the host: the shader census, the wild Pokemon population and the
-// version exclusives.
+// Scarlet and Violet's Oodle decoder through the host: the shader census, the wild Pokemon population, the version
+// exclusives and the trade evolutions.
 //
 // The shader census: every shader program of the player's own data.trpfs, extracted once at install time so that
 // totk.exe --prepare-shaders can translate and build all of them before play (no stutter and no invisible effects the
@@ -21,9 +21,13 @@
 // gets its absent slot pointed at the stored flag's offset, and the entries whose vtable is too short for the second
 // slot are pointed at that vtable. It walks the table itself and leaves it alone unless it looks exactly like that.
 //
+// No trade evolutions (setting no_trade_evo): with no trading in the port, the Pokemon that evolve only by trading
+// evolve on a level or while holding an item instead. See evo_fix below.
+//
 // Adapted from KarPur's runtime/shader_census.c and runtime/data_watch.c (https://github.com/Grunttanamo/KarPur @
 // c2b2c0d738f2c769c24e2ceddb60592aba6e7778, MIT, Copyright (c) 2026 KarPur contributors): the Oodle hook, the
-// archive walk, the BNSH extraction, the seed records, the population fields and excl_fix. Left out: KarPur's search for programs recorded in play, its
+// archive walk, the BNSH extraction, the seed records, the population fields, excl_fix and evo_fix with its tables
+// (the levels and substitute items are KarPur's maintainer's choices). Left out: KarPur's search for programs recorded in play, its
 // container report, the team icons and the growth curves.
 //
 // How it works. Scarlet and Violet keep their shaders in BNSH containers inside Oodle-packed files of arc/data.trpfs
@@ -475,6 +479,126 @@ static void exclusives_patch(const uint64_t a[8], uint64_t r) {
     }
 }
 
+// ---- no trade evolutions
+// The species table avalon/data/personal_array.bin (412572 bytes unpacked; Violet 4.0.0): a vector of 1424 entries,
+// field 0 the species number and field 23 a vector of 16-byte evolution structs { u16 level, u16 method, u16 argument,
+// u16 x3, u16 target species, u16 }. Every change fits inside a struct, so the file keeps its size.
+// - Method 5 (by trading) becomes method 4 (on reaching the level in the first field), at the levels of trade_evo.
+// - Method 6 (by trading holding an item, the argument a national item number) becomes method 19 (levels up by day
+//   holding the item), whose argument is the item's plibID, the small item space of
+//   world/data/battle/plib_item_conversion. Method 8 ("an item is used on it") does not do: these items can only be
+//   held. Items with no plibID in the game's data get a substitute item (evo_item_own) or, where KarPur's tests found
+//   no substitute that works, a level (evo_item_level).
+#define EVO_SLOT 23
+#define EVO_STRUCT 16
+#define EVO_TRADE 5
+#define EVO_LEVEL 4
+#define EVO_TRADE_ITEM 6
+#define EVO_HOLD_ITEM 19
+static const struct { uint64_t unpacked, print; } evo_file[] = {{412572, 0x015856eb1c2b489aull}};
+static const struct { uint16_t species, level; } trade_evo[] = {
+    {64, 40},  {67, 39},  {75, 36},  {93, 42},   // Kadabra, Machoke, Graveler, Haunter
+    {525, 35}, {533, 40}, {708, 30}, {710, 30},  // Boldore, Gurdurr, Phantump, Pumpkaboo
+};
+static const struct { uint16_t species, target, plib; } evo_item_own[] = {
+    {61, 186, 87},    // Poliwhirl -> Politoed: plibID 87 (item 2345) for the King's Rock, which has none
+    {79, 199, 87},    // Slowpoke -> Slowking: the same
+    {366, 367, 111},  // Clamperl -> Huntail: plibID 111 (item 537) for the Deep Sea Tooth
+    {366, 368, 27},   // Clamperl -> Gorebyss: plibID 27 (item 299), apart from Huntail's
+};
+static const struct { uint16_t species, target, level; } evo_item_level[] = {
+    {95, 208, 40}, {123, 212, 30}, {682, 683, 20}, {684, 685, 20},   // Onix, Scyther, Spritzee, Swirlix
+};
+static const struct { uint16_t item, plib; } evo_item[] = {   // national item number -> plibID
+    {235, 118}, {252, 113}, {321, 117}, {322, 115},   // Dragon Scale, Up-Grade, Protector, Electirizer
+    {323, 116}, {324, 114}, {325, 112}, {537, 111},   // Magmarizer, Dubious Disc, Reaper Cloth, Prism Scale
+};
+static int evo_on = -1;
+
+static int no_trade_evo(void) {
+    if (evo_on < 0) evo_on = RT_SV && cfg_bool("TOTK_NO_TRADE_EVO");
+    return evo_on;
+}
+
+static void put16(uint8_t *p, uint16_t v) { memcpy(p, &v, 2); }
+
+static void evo_fix(uint8_t *b, uint64_t n) {
+    if (n < 32) return;
+    uint64_t root = u32(b);
+    uint16_t vo = root + 8 <= n ? ex_slot(b, n, root, 0) : 0;
+    if (!vo || root + vo + 4 > n) return;
+    uint64_t v = root + vo;
+    v += u32(b + v);
+    if (v + 4 > n) return;
+    uint32_t count = u32(b + v);
+    if (!count || count > 100000 || v + 4 + 4 * (uint64_t)count > n) return;
+    int levels = 0, items = 0, left = 0;
+    for (uint32_t k = 0; k < count; k++) {
+        uint64_t e = v + 4 + 4 * (uint64_t)k;
+        e += u32(b + e);
+        if (e + 4 > n) return;
+        uint16_t so = ex_slot(b, n, e, 0), eo = ex_slot(b, n, e, EVO_SLOT);
+        if (!so || !eo || e + so + 2 > n || e + eo + 4 > n) continue;
+        uint16_t species = u16(b + e + so);
+        uint64_t ev = e + eo;
+        ev += u32(b + ev);
+        if (ev + 4 > n) return;
+        uint32_t m = u32(b + ev);
+        if (m > 64 || ev + 4 + (uint64_t)m * EVO_STRUCT > n) continue;
+        for (uint32_t j = 0; j < m; j++) {
+            uint8_t *s = b + ev + 4 + (uint64_t)j * EVO_STRUCT;
+            uint16_t method = u16(s + 2), target = u16(s + 12), level = 0, plib = 0;
+            if (method == EVO_TRADE) {
+                for (size_t i = 0; i < sizeof trade_evo / sizeof *trade_evo; i++)
+                    if (trade_evo[i].species == species) level = trade_evo[i].level;
+                if (!level) {   // a trade evolution with no level here (a later game version): said and left alone
+                    left++;
+                    rt_log("no trade evolutions: species %u evolves by trading into %u, no level here; left alone",
+                           species, target);
+                    continue;
+                }
+                put16(s, level), put16(s + 2, EVO_LEVEL), levels++;
+            } else if (method == EVO_TRADE_ITEM) {
+                for (size_t i = 0; i < sizeof evo_item_level / sizeof *evo_item_level; i++)
+                    if (evo_item_level[i].species == species && evo_item_level[i].target == target)
+                        level = evo_item_level[i].level;
+                if (level) {
+                    put16(s, level), put16(s + 2, EVO_LEVEL), put16(s + 4, 0), levels++;
+                    continue;
+                }
+                for (size_t i = 0; i < sizeof evo_item_own / sizeof *evo_item_own; i++)
+                    if (evo_item_own[i].species == species && evo_item_own[i].target == target)
+                        plib = evo_item_own[i].plib;
+                for (size_t i = 0; !plib && i < sizeof evo_item / sizeof *evo_item; i++)
+                    if (evo_item[i].item == u16(s + 4)) plib = evo_item[i].plib;
+                if (!plib) {
+                    left++;
+                    rt_log("no trade evolutions: species %u evolves by trading into %u holding item %u, which has no "
+                           "plibID here; left alone", species, target, u16(s + 4));
+                    continue;
+                }
+                put16(s + 2, EVO_HOLD_ITEM), put16(s + 4, plib), items++;
+            }
+        }
+    }
+    if (levels || items || left)
+        rt_log("no trade evolutions: of %u species entries, %d evolve on a level and %d on a level by day holding an "
+               "item, %d left alone", count, levels, items, left);
+}
+
+// The data patches of one decoded file: r unpacked bytes at a[2] from a[1] packed bytes at a[0].
+static void data_patch(const uint64_t a[8], uint64_t r) {
+    if (excl_on > 0) exclusives_patch(a, r);
+    if (evo_on > 0 && r == evo_file[0].unpacked) {
+        uint64_t head = a[1] < 4096 ? a[1] : 4096;
+        if (a[0] + head > RT_ADDRESS_LIMIT || a[2] + r > RT_ADDRESS_LIMIT) return;
+        uint64_t print = fnv1a64_bytes((const uint8_t *)(uintptr_t)a[0], head);
+        if (print == evo_file[0].print) evo_fix((uint8_t *)(uintptr_t)a[2], r);
+        else rt_log("no trade evolutions: a %llu-byte file with another fingerprint (%016llx), left alone",
+                    (unsigned long long)r, (unsigned long long)print);
+    }
+}
+
 // Every call of the game's Oodle decoder while the set is on: the guest decoder as before, then the data patches.
 static void host_oodle(Cpu *c) {
     uint64_t a[8];
@@ -485,7 +609,7 @@ static void host_oodle(Cpu *c) {
     }
     uint64_t r = rt_call(c, GUEST_OODLE, 8, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);   // its result stays in x0
     if (wild_count > 0) population_patch(a, r);
-    if (excl_on > 0) exclusives_patch(a, r);
+    data_patch(a, r);
 }
 
 __attribute__((constructor)) static void sv_census_register(void) { rt_register_host(HOST_OODLE, host_oodle); }
@@ -497,7 +621,8 @@ void sv_oodle_init(void) {
     int wild = population();
     if (wild) rt_log("population: up to %d wild Pokemon at once (the game's own: 15)", wild);
     if (no_exclusives()) rt_log("no exclusives: the wild Pokemon of both editions spawn");
-    if (census_wanted() || wild || excl_on) rt_patch_switch(set, 1);
+    if (no_trade_evo()) rt_log("no trade evolutions: trade evolutions happen on a level or holding an item");
+    if (census_wanted() || wild || excl_on || evo_on) rt_patch_switch(set, 1);
 }
 
 #else

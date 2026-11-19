@@ -50,7 +50,7 @@ static const char *const known[] = {
     "MENU_CURSOR", "MENU_CURSOR_LOG", "MENU_TEST_DIR", "MENU_TEST_SET", "MINIMAL_LAYOUT", "MIRROR_GAP", "MODS_DIR", "MODS_DISABLED", "MODS_ORDER", "MODS_REBUILD", "MOTION", "MOUSE_AIM_SCALE", "MOUSE_MODE", "MOUSE_DIRECT_PATCH", "MOUSE_SENS", "MOVIE_ASPECT", "MOVIE_HOST", "MOVIE_PACE",
     "MVOBJ_ALL", "MVOBJ_BANKS", "MVOBJ_EQUAL", "MVOBJ_EXACT", "MVOBJ_EXEC", "MVOBJ_NOC4", "MVOBJ_ONLY", "MVOBJ_TIMES", "MVPREV_CHECK", "MVPREV_GROW", "MVPREV_SKIP", "MVPREV_TRUST", "MV_CHECK",
     "MV_SURVEY",
-    "DYNAMIC_RES", "GPU_TIMING", "KBM_PROMPTS", "PROMPT_SURVEY", "LOG_INDIRECT", "LOG_TEX_SIZE", "OCCLUSION", "ONE_PER_CORE", "OPERATION_MODE", "OUTPUT_RES", "PAD_LAYOUT", "PASS_CRUMBS", "PATCH_OUTPUT", "PATCH_SCENE", "NO_EXCLUSIVES", "PCSS", "PCSS_K", "PEOPLE_DETAIL", "PEOPLE_SHOWN", "POKEMON_DETAIL", "POPULATION", "PERF_OVERLAY", "PERF_SLOW_MS", "PIPELINE_CACHE", "PIPE_MEMO", "PIPE_PREBUILD", "PIPE_SKIP", "PIPE_SYNC", "PIPE_WAIT", "PRESENT_INTERVAL",
+    "DYNAMIC_RES", "GPU_TIMING", "KBM_PROMPTS", "PROMPT_SURVEY", "LOG_INDIRECT", "LOG_TEX_SIZE", "OCCLUSION", "ONE_PER_CORE", "OPERATION_MODE", "OUTPUT_RES", "PAD_LAYOUT", "PASS_CRUMBS", "PATCH_OUTPUT", "PATCH_SCENE", "NO_EXCLUSIVES", "NO_TRADE_EVO", "PCSS", "PCSS_K", "PEOPLE_DETAIL", "PEOPLE_SHOWN", "POKEMON_DETAIL", "POPULATION", "PERF_OVERLAY", "PERF_SLOW_MS", "PIPELINE_CACHE", "PIPE_MEMO", "PIPE_PREBUILD", "PIPE_SKIP", "PIPE_SYNC", "PIPE_WAIT", "PRESENT_INTERVAL",
     "PREWARM_XLATE", "PROBE_MOVIE", "PROBE_MOVIE_BENCH", "PROBE_MOVIE_SHOT", "PROFILE", "PROFILE_CHAINS", "PROFILE_DIR", "PROFILE_FRAMES",
     "PROFILE_MAIN", "PROFILE_RENDER", "PROMPTS", "PUSH_SKIP", "PUSH_STAGE", "RDOC", "RDOC_DIR", "RDOC_DLL", "REALTIME", "REC_END", "REEXEC",
     "RENDER_SCALE", "REPLAY_ASYNC",
@@ -75,7 +75,7 @@ static const struct { const char *key, *section; } sections[] = {
     {"COLOR_PRESET", "display"},
     {"COLOR_BRIGHTNESS", "display"}, {"COLOR_CONTRAST", "display"}, {"COLOR_SATURATION", "display"},
     {"COLOR_GAMMA", "display"}, {"HDR", "display"}, {"HDR_PEAK_NITS", "display"}, {"HDR_GAME_NITS", "display"},
-    {"HDR_UI_NITS", "display"}, {"HDR_HUE", "display"}, {"SHADOW_RES", "display"}, {"POPULATION", "display"}, {"NO_EXCLUSIVES", "display"}, {"PEOPLE_DETAIL", "display"}, {"POKEMON_DETAIL", "display"}, {"PEOPLE_SHOWN", "display"},
+    {"HDR_UI_NITS", "display"}, {"HDR_HUE", "display"}, {"SHADOW_RES", "display"}, {"POPULATION", "display"}, {"NO_EXCLUSIVES", "display"}, {"NO_TRADE_EVO", "display"}, {"PEOPLE_DETAIL", "display"}, {"POKEMON_DETAIL", "display"}, {"PEOPLE_SHOWN", "display"},
     {"DLAA", "display"}, {"DLSS", "display"}, {"DLSS_PRESET", "display"}, {"DLSS_CHAR_MASK", "display"}, {"FXAA", "display"},
     {"DEVICE_PROFILE", "display"}, {"ASSUME_FOCUS", "display"},
     {"DISCORD_RPC", "discord"}, {"DISCORD_APP_ID", "discord"}, {"DISCORD_IMAGE", "discord"},
@@ -136,7 +136,7 @@ static const CfgMeta metas[] = {
     {"SHADOW_RES", "game", "game|256|512|768|1024|1536|2048|3072|4096", RESTART},
     {"POPULATION", "switch", "switch|switch2|enhanced|extreme", RESTART},   // sv_census.c, Scarlet and Violet
     {"PEOPLE_DETAIL", "1", "1|2|4|6|8|10", RESTART}, {"POKEMON_DETAIL", "1", "1|2|4|6|8", RESTART},   // sv_detail.c
-    {"PEOPLE_SHOWN", "12", "12|24|36|48", RESTART}, {"NO_EXCLUSIVES", "0", "0|1", RESTART},
+    {"PEOPLE_SHOWN", "12", "12|24|36|48", RESTART}, {"NO_EXCLUSIVES", "0", "0|1", RESTART}, {"NO_TRADE_EVO", "0", "0|1", RESTART},
     {"XFB_SYNC", "0", "0|1", RESTART},   // vk_exec_draw.c xfb_sync_after   // sv_census.c
     {"SHADOW_SCALE", "2", "1..4", RESTART},
     {"SHADOW_RANGE", "100", "50..400", RESTART}, {"CONTACT_SHADOWS", "0", "0..100", RESTART},

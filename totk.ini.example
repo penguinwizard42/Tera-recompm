@@ -205,6 +205,11 @@
 # Scarlet and Violet: 1 lets the other edition's exclusive wild Pokemon spawn too (Larvitar in Violet, Bagon in
 # Scarlet and so on). The Pokedex still shows no habitat for them. Read at start.
 # no_exclusives = 0
+# Scarlet and Violet: 1 makes the Pokemon that evolve by trading evolve without it. Kadabra 40, Machoke 39, Graveler
+# 36, Haunter 42, Boldore 35, Gurdurr 40, Phantump 30, Pumpkaboo 30, Onix 40, Scyther 30, Spritzee 20 and Swirlix 20
+# evolve on reaching that level; the others level up by day while holding their trade item (Poliwhirl, Slowpoke and
+# Clamperl a substitute item, since the game cannot name theirs). Read at start.
+# no_trade_evo = 0
 
 # Shadow map resolution: Pokemon Scarlet's sun shadow map is 1024x1024 whatever the game resolution; 2 to 4 draws it
 # that many times larger on each side, for sharper, less blocky shadows (2 = 2048x2048, the default). 1 = the game's.

@@ -694,6 +694,7 @@ static void tab_screen(float scale) {
         const char *ps_names[] = {menu_text(UI_MENU_PEOPLE_SHOWN_GAME), "24", "36", "48"};
         opt_choice_list("TOTK_PEOPLE_SHOWN", UI_MENU_PEOPLE_SHOWN, ps, ps_names, 4, UI_MENU_PEOPLE_SHOWN_DESC);
         opt_toggle("TOTK_NO_EXCLUSIVES", UI_MENU_NO_EXCLUSIVES, UI_MENU_NO_EXCLUSIVES_DESC);   // sv_census.c
+        opt_toggle("TOTK_NO_TRADE_EVO", UI_MENU_NO_TRADE_EVO, UI_MENU_NO_TRADE_EVO_DESC);      // sv_census.c
     }
     static const UiTextId up[] = {UI_MENU_UPSCALER_FSR, UI_MENU_UPSCALER_BILINEAR};
     opt_choice("TOTK_UPSCALER", UI_MENU_UPSCALER, up, 2, UI_MENU_UPSCALER_DESC);
