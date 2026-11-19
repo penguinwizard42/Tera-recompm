@@ -38,6 +38,9 @@
 # Replay NVN submissions on their own thread, at most one frame behind the game, 0 or 1. Default: off. Helps where the
 # game waits for the GPU; adds up to a frame of latency.
 # replay_async = 0
+# AMD (RDNA 3): 1 ends transform feedback and puts a full barrier after every draw that captures vertex outputs (the
+# characters' skinning), for a GPU crash (device lost) in character creation. Slower; off by default. Unconfirmed fix.
+# xfb_sync = 0
 # EXPERIMENTAL, THE GAME CRASHES WITH 1. 1 lifts the virtual core gate: guest threads run without the console's limit
 # of one thread per core, and the game keeps per-core data without locks. With 1, 1.2.1 and 1.4.3 crash or hang,
 # usually at start (#212). Keep 0 to play.

@@ -2767,6 +2767,24 @@ static void xfb_draw(VkExec *ex) {
     vk_exec_frame.xfb_passes++;
 }
 
+// TOTK_XFB_SYNC=1 (off): after every captured draw, transform feedback ends (its write offsets go to the counter
+// buffer) and a full barrier follows, which ends the pass; the next draw begins the pass again and transform feedback
+// continues from the counters. So every capture is ordered before whatever comes next, including the next capture's
+// counter reads, at the cost of a pass break per captured draw. For the AMD (RDNA 3) device loss during character
+// creation that KarPur's issue #18 describes: there, turning captures off avoids it (and breaks the skinned models),
+// and AMD's serializing crash-analysis mode avoids it with the models intact, which points at an ordering problem
+// between the captured draws of one pass. A hypothesis from KarPur (vk_xfb.c xfb_sync), unconfirmed on AMD hardware.
+static void xfb_sync_after(VkExec *ex) {
+    static int on = -1;
+    if (on < 0) {
+        on = cfg_bool("TOTK_XFB_SYNC");
+        if (on) rt_log("vk: transform feedback: a full barrier after every captured draw (xfb_sync)");
+    }
+    if (!on || !ex->xfb_running) return;
+    xfb_stop(ex);
+    vk_exec_barrier(ex);
+}
+
 // OP_XFB_BIND / OP_XFB_STATE
 static void op_xfb(VkExec *ex, uint32_t op, const void *payload) {
     if (op == OP_XFB_BIND) {
@@ -4234,10 +4252,10 @@ void vk_exec_op_draw(VkExec *ex, uint32_t op, const void *payload) {
     }
     case OP_XFB_BIND: case OP_XFB_STATE: op_xfb(ex, op, payload); break;
     case OP_UPDATE_UB: op_update_ub(ex, payload); break;
-    case OP_DRAW: op_draw(ex, payload); break;
-    case OP_DRAW_IDX: op_draw_idx(ex, payload); break;
+    case OP_DRAW: op_draw(ex, payload), xfb_sync_after(ex); break;
+    case OP_DRAW_IDX: op_draw_idx(ex, payload), xfb_sync_after(ex); break;
     case OP_DISPATCH: op_dispatch(ex, payload); break;
-    case OP_DRAW_IDX_IND: op_draw_idx_ind(ex, payload); break;
+    case OP_DRAW_IDX_IND: op_draw_idx_ind(ex, payload), xfb_sync_after(ex); break;
     case OP_DISPATCH_IND: op_dispatch_ind(ex, payload); break;
     default: rt_fatal("vk: op %s is not a draw op", nvn_op_name(op));
     }

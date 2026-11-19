@@ -997,6 +997,7 @@ static void tab_advanced(float scale) {
     opt_toggle("TOTK_PIPE_PREBUILD", UI_MENU_PIPE_PREBUILD, UI_MENU_PIPE_PREBUILD_DESC);
     row_threads("TOTK_PREWARM_XLATE", UI_MENU_PREWARM_XLATE, UI_MENU_PREWARM_XLATE_DESC);
     opt_toggle("TOTK_GPL", UI_MENU_GPL, UI_MENU_GPL_DESC);
+    opt_toggle("TOTK_XFB_SYNC", UI_MENU_XFB_SYNC, UI_MENU_XFB_SYNC_DESC);   // vk_exec_draw.c xfb_sync_after
 
     opt_group(UI_MENU_GROUP_TEXMEM);
     static const UiTextId astc[] = {UI_MENU_ASTC_AUTO, UI_MENU_ASTC_GPU, UI_MENU_ASTC_NATIVE, UI_MENU_ASTC_CPU};
