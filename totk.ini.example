@@ -199,6 +199,9 @@
 # people_detail = 1
 # pokemon_detail = 1
 # people_shown = 12
+# Scarlet and Violet: 1 lets the other edition's exclusive wild Pokemon spawn too (Larvitar in Violet, Bagon in
+# Scarlet and so on). The Pokedex still shows no habitat for them. Read at start.
+# no_exclusives = 0
 
 # Shadow map resolution: Pokemon Scarlet's sun shadow map is 1024x1024 whatever the game resolution; 2 to 4 draws it
 # that many times larger on each side, for sharper, less blocky shadows (2 = 2048x2048, the default). 1 = the game's.

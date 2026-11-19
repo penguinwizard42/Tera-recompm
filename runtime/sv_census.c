@@ -1,4 +1,5 @@
-// Scarlet and Violet's Oodle decoder through the host: the shader census, and the wild Pokemon population.
+// Scarlet and Violet's Oodle decoder through the host: the shader census, the wild Pokemon population and the
+// version exclusives.
 //
 // The shader census: every shader program of the player's own data.trpfs, extracted once at install time so that
 // totk.exe --prepare-shaders can translate and build all of them before play (no stutter and no invisible effects the
@@ -12,9 +13,17 @@
 // count. Offsets and values from KarPur's runtime/data_patch.c, which reports 120 together with 4096 shadows playing
 // fine on its maintainer's PC; nothing is reserved for them, the game's own memory budget holds them.
 //
+// No version exclusives (setting no_exclusives): the wild Pokemon of both editions spawn. The three species tables of
+// world/data/encount (pokedata*_array.bin, told apart by unpacked size and an FNV-1a 64 of their first packed bytes)
+// give each entry versiontable { A: bool, B: bool }; an exclusive stores its own edition's flag and leaves the
+// other's field absent, which FlatBuffers reads as false. Both editions ship the same tables. excl_fix makes both
+// flags read the one stored byte without rewriting the file: the vtable of the exclusives that has room for both slots
+// gets its absent slot pointed at the stored flag's offset, and the entries whose vtable is too short for the second
+// slot are pointed at that vtable. It walks the table itself and leaves it alone unless it looks exactly like that.
+//
 // Adapted from KarPur's runtime/shader_census.c and runtime/data_watch.c (https://github.com/Grunttanamo/KarPur @
 // c2b2c0d738f2c769c24e2ceddb60592aba6e7778, MIT, Copyright (c) 2026 KarPur contributors): the Oodle hook, the
-// archive walk, the BNSH extraction, the seed records and the population fields. Left out: KarPur's search for programs recorded in play, its
+// archive walk, the BNSH extraction, the seed records, the population fields and excl_fix. Left out: KarPur's search for programs recorded in play, its
 // container report, the team icons and the growth curves.
 //
 // How it works. Scarlet and Violet keep their shaders in BNSH containers inside Oodle-packed files of arc/data.trpfs
@@ -370,7 +379,103 @@ static void population_patch(const uint64_t a[8], uint64_t r) {
     if (!logged++) rt_log("population: object_generation_range set to up to %d wild Pokemon at once", wild_count);
 }
 
-// Every call of the game's Oodle decoder while the set is on: the guest decoder as before, then the population.
+// ---- no version exclusives
+static const struct { uint64_t unpacked, print; } excl_files[] = {   // Violet 4.0.0; the print over min(packed, 4096)
+    {34724, 0x888111ef69f71aa3ull}, {36784, 0x8ae3f9b2548a5528ull}, {58984, 0x0a60102c8801df28ull},
+};
+#define EXCL_SLOT 28   // versiontable's slot in an entry (devid 0 .. bringItem 29)
+#define EXCL_MAX 512
+static int excl_on = -1;
+
+static int no_exclusives(void) {
+    if (excl_on < 0) excl_on = RT_SV && cfg_bool("TOTK_NO_EXCLUSIVES");
+    return excl_on;
+}
+
+static uint16_t u16(const uint8_t *p) { uint16_t v; memcpy(&v, p, 2); return v; }
+static int64_t ex_vtable(const uint8_t *b, uint64_t pos) {
+    int32_t d;
+    memcpy(&d, b + pos, 4);
+    return (int64_t)pos - d;
+}
+// The field's offset from the table's start, or 0 when its vtable has no slot for it or leaves it absent.
+static uint16_t ex_slot(const uint8_t *b, uint64_t n, uint64_t pos, unsigned slot) {
+    int64_t vt = ex_vtable(b, pos);
+    if (vt < 0 || (uint64_t)vt + 4 > n) return 0;
+    uint16_t size = u16(b + vt);
+    uint64_t at = 4 + 2 * (uint64_t)slot;
+    return at + 2 <= size && (uint64_t)vt + at + 2 <= n ? u16(b + vt + at) : 0;
+}
+
+static void excl_fix(uint8_t *b, uint64_t n) {
+    if (n < 32) return;
+    uint64_t root = u32(b);
+    uint16_t vo = root + 8 <= n ? ex_slot(b, n, root, 0) : 0;   // the root's only field: the vector of entries
+    if (!vo || root + vo + 4 > n) return;
+    uint64_t v = root + vo;
+    v += u32(b + v);
+    if (v + 4 > n) return;
+    uint32_t count = u32(b + v);
+    if (!count || count > 100000 || v + 4 + 4 * (uint64_t)count > n) return;
+    uint64_t pos[EXCL_MAX];
+    int64_t vts[EXCL_MAX];
+    int many = 0, both = 0;
+    uint16_t off = 0;
+    for (uint32_t k = 0; k < count; k++) {
+        uint64_t e = v + 4 + 4 * (uint64_t)k;
+        e += u32(b + e);
+        if (e + 4 > n) return;
+        uint16_t so = ex_slot(b, n, e, EXCL_SLOT);
+        if (!so || e + so + 4 > n) continue;
+        uint64_t vp = e + so;
+        vp += u32(b + vp);
+        if (vp + 4 > n) return;
+        uint16_t a = ex_slot(b, n, vp, 0), bb = ex_slot(b, n, vp, 1);
+        if (a && bb) { both++; continue; }
+        if (!a && !bb) continue;                  // neither flag: the game's own default decides
+        if (off && (a ? a : bb) != off) return;   // the stored flag must sit at one offset in all of them
+        off = a ? a : bb;
+        if (many == EXCL_MAX) return;
+        pos[many] = vp, vts[many++] = ex_vtable(b, vp);
+    }
+    if (!many || !both) return;
+    int64_t target = -1;   // a vtable with room for both slots: the one whose other edition's slot is only absent
+    for (int i = 0; i < many; i++)
+        if ((uint64_t)vts[i] + 8 <= n && u16(b + vts[i]) >= 8) target = vts[i];
+    if (target < 0) return;
+    uint16_t a = u16(b + target + 4), bb = u16(b + target + 6);
+    if ((a != 0 && a != off) || (bb != 0 && bb != off) || (a && bb)) return;
+    memcpy(b + target + (a ? 6 : 4), &off, 2);   // both slots now read the stored byte
+    int moved = 0;
+    for (int i = 0; i < many; i++) {
+        if (vts[i] == target) continue;
+        int32_t d = (int32_t)((int64_t)pos[i] - target);
+        memcpy(b + pos[i], &d, 4);   // this entry's versiontable uses the vtable that has room
+        moved++;
+    }
+    rt_log("no exclusives: %d of %u entries freed (%d pointed at the other vtable), flag at +%u", many, count, moved,
+           off);
+}
+
+static void exclusives_patch(const uint64_t a[8], uint64_t r) {
+    for (size_t i = 0; i < sizeof excl_files / sizeof *excl_files; i++) {
+        if (excl_files[i].unpacked != r) continue;
+        uint64_t head = a[1] < 4096 ? a[1] : 4096;
+        if (a[0] + head > RT_ADDRESS_LIMIT || a[2] + r > RT_ADDRESS_LIMIT) return;
+        uint64_t print = fnv1a64_bytes((const uint8_t *)(uintptr_t)a[0], head);
+        if (print == excl_files[i].print) {
+            excl_fix((uint8_t *)(uintptr_t)a[2], r);
+        } else {
+            static int told;
+            if (told++ < 4)
+                rt_log("no exclusives: a %llu-byte file with another fingerprint (%016llx), left alone",
+                       (unsigned long long)r, (unsigned long long)print);
+        }
+        return;
+    }
+}
+
+// Every call of the game's Oodle decoder while the set is on: the guest decoder as before, then the data patches.
 static void host_oodle(Cpu *c) {
     uint64_t a[8];
     memcpy(a, c->x, sizeof a);
@@ -380,6 +485,7 @@ static void host_oodle(Cpu *c) {
     }
     uint64_t r = rt_call(c, GUEST_OODLE, 8, a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]);   // its result stays in x0
     if (wild_count > 0) population_patch(a, r);
+    if (excl_on > 0) exclusives_patch(a, r);
 }
 
 __attribute__((constructor)) static void sv_census_register(void) { rt_register_host(HOST_OODLE, host_oodle); }
@@ -390,7 +496,8 @@ void sv_oodle_init(void) {
     if (set < 0 || !RT_SV) return;
     int wild = population();
     if (wild) rt_log("population: up to %d wild Pokemon at once (the game's own: 15)", wild);
-    if (census_wanted() || wild) rt_patch_switch(set, 1);
+    if (no_exclusives()) rt_log("no exclusives: the wild Pokemon of both editions spawn");
+    if (census_wanted() || wild || excl_on) rt_patch_switch(set, 1);
 }
 
 #else
