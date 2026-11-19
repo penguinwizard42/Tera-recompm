@@ -55,7 +55,8 @@ the 4.0.0 update, `prod.keys`, the firmware folder and optionally the DLC, and i
    - **Install folder**: a new, empty folder, for example `C:\Games\Tera Recomp`.
 4. Click **Start** and wait. The window shows each step: checking the files, extracting the system fonts, extracting
    and merging the game with the update, translating the game code to C and compiling it, then preparing every shader
-   of the game for your graphics card. About 30 minutes on a recent PC. If it stops, it resumes from the last finished step when you click Start again.
+   of the game for your graphics card. About 30 minutes on a recent PC with an SSD; on a hard disk the shader step
+   alone can take an hour. If it stops, it resumes from the last finished step when you click Start again.
 5. When it is done, start the game with the **Pokemon Scarlet** (or **Pokemon Violet**) shortcut on your desktop (or `totk.exe` in the install
    folder).
 
