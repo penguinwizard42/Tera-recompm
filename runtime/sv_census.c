@@ -22,7 +22,7 @@
 // slot are pointed at that vtable. It walks the table itself and leaves it alone unless it looks exactly like that.
 //
 // No trade evolutions (setting no_trade_evo): with no trading in the port, the Pokemon that evolve only by trading
-// evolve on a level or while holding an item instead. See evo_fix below.
+// evolve on a level or while holding an item instead. See evo_fix below and docs/trade-evolutions.md.
 //
 // Adapted from KarPur's runtime/shader_census.c and runtime/data_watch.c (https://github.com/Grunttanamo/KarPur @
 // c2b2c0d738f2c769c24e2ceddb60592aba6e7778, MIT, Copyright (c) 2026 KarPur contributors): the Oodle hook, the
